@@ -1,2 +1,0 @@
-# whiteboard
-Multiplayer whiteboard app
