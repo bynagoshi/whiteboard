@@ -24,7 +24,7 @@ pub struct Stroke {
     pub color: String,
     pub thickness: f32,
     pub points: Vec<Point>,
-    pub timestamp: u64, // Unix timestamp in milliseconds
+    pub timestamp: spacetimedb::Timestamp,
 }
 
 #[spacetimedb::reducer(init)]
@@ -59,7 +59,7 @@ pub fn add_stroke(
     thickness: f32,
     points: Vec<Point>,
 ) {
-    let user = ctx.sender;
+    let user = ctx.sender.to_string();
     let timestamp = ctx.timestamp;
     
     ctx.db.stroke().insert(Stroke { 
@@ -75,9 +75,9 @@ pub fn add_stroke(
 
 #[spacetimedb::reducer]
 pub fn delete_stroke(ctx: &ReducerContext, stroke_id: u64) {
-    if let Some(stroke) = ctx.db.stroke().filter_by_id(&stroke_id).next() {
-        if stroke.user == ctx.sender {
-            ctx.db.stroke().delete_by_id(&stroke_id);
+    if let Some(stroke) = ctx.db.stroke().iter().find(|s| s.id == stroke_id) {
+        if stroke.user == ctx.sender.to_string() {
+            ctx.db.stroke().delete(stroke);
             log::info!("Stroke {} deleted by user {}", stroke_id, ctx.sender);
         } else {
             log::warn!("User {} attempted to delete stroke {} owned by {}", ctx.sender, stroke_id, stroke.user);
@@ -87,27 +87,26 @@ pub fn delete_stroke(ctx: &ReducerContext, stroke_id: u64) {
 
 #[spacetimedb::reducer]
 pub fn delete_stroke_anyone(ctx: &ReducerContext, stroke_id: u64) {
-    if let Some(stroke) = ctx.db.stroke().filter_by_id(&stroke_id).next() {
-        ctx.db.stroke().delete_by_id(&stroke_id);
+    if let Some(stroke) = ctx.db.stroke().iter().find(|s| s.id == stroke_id) {
+        ctx.db.stroke().delete(stroke);
         log::info!("Stroke {} deleted by user {}", stroke_id, ctx.sender);
     }
 }
 
 #[spacetimedb::reducer]
 pub fn clear_board(ctx: &ReducerContext, board_id: u64) {
-    if ctx.db.board().filter_by_id(&board_id).next().is_none() {
+    if ctx.db.board().iter().find(|b| b.id == board_id).is_none() {
         log::warn!("Attempted to clear non-existent board {} by user {}", board_id, ctx.sender);
         return;
     }
 
-    let strokes_to_delete: Vec<u64> = ctx.db.stroke()
+    let strokes_to_delete: Vec<_> = ctx.db.stroke()
         .iter()
         .filter(|stroke| stroke.board_id == board_id)
-        .map(|stroke| stroke.id)
         .collect();
     
-    for stroke_id in strokes_to_delete {
-        ctx.db.stroke().delete_by_id(&stroke_id);
+    for stroke in strokes_to_delete {
+        ctx.db.stroke().delete(stroke);
     }
     
     log::info!("Board {} cleared by user {}", board_id, ctx.sender);
