@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3 uid="uid://dytj1vod2lsxe"]
+
+[ext_resource type="Script" uid="uid://ddqnpf3dmuem2" path="res://SpacetimeManager.cs" id="1_ig7tw"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_ig7tw")
