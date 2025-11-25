@@ -28,8 +28,12 @@ pub struct Stroke {
 }
 
 #[spacetimedb::reducer(init)]
-pub fn init(_ctx: &ReducerContext) {
-    // Called when the module is initially published
+pub fn init(ctx: &ReducerContext) {
+    ctx.db.board().insert(Board {
+        id: 0, 
+        name: "Main Board".to_string(),
+    });
+    log::info!("Initialized default board with ID 1");
 }
 
 #[spacetimedb::reducer(client_connected)]

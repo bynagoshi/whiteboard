@@ -1,15 +1,18 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using SpacetimeDB.Types;
 using SpacetimeDB.ClientApi;
 
 public partial class SpacetimeManager : Node
 {
+	public static SpacetimeManager Instance { get; private set; }
 	public DbConnection Client;
 	
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
+		Instance = this;
 		ConnectToDb();
 		
 	}
@@ -43,5 +46,13 @@ public partial class SpacetimeManager : Node
 			})
 			.Build();
 			
+	}
+	
+	public void AddStroke(ulong boardId, string color, float thickness, List<Point> points)
+	{
+		if (Client?.Reducers != null)
+		{
+			Client.Reducers.AddStroke(boardId, color, thickness, points);
+		}
 	}
 }
