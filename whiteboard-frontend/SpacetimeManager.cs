@@ -34,18 +34,60 @@ public partial class SpacetimeManager : Node
 			.WithModuleName(DB_NAME)
 			.OnConnect((conn, identity, token) =>
 			{
-				
 				conn.SubscriptionBuilder()
-					.OnApplied(ctx => { GD.Print("Subscribed");})
-					//.Subscribe(new string[] 
-					//{	
-						//"SELECT * FROM board",
-						//"SELECT * FROM stroke"
-					//})
+					.OnApplied(ctx => 
+					{ 
+						GD.Print("Subscribed");
+						LoadAllStrokes(ctx);
+					})
 					.SubscribeToAllTables();
+				
+				conn.Db.Stroke.OnInsert += OnStrokeInserted;
+				conn.Db.Stroke.OnUpdate += OnStrokeUpdated;
+				conn.Db.Stroke.OnDelete += OnStrokeDeleted;
 			})
 			.Build();
 			
+	}
+	
+	private void LoadAllStrokes(SubscriptionEventContext ctx)
+	{
+
+		foreach (var stroke in ctx.Db.Stroke.Iter())
+		{
+			if (stroke.BoardId == 1)
+			{
+				Whiteboard.Instance?.DisplayStroke(stroke);
+			}
+		}
+	}
+	
+	private void OnStrokeInserted(EventContext ctx, Stroke insertedStroke)
+	{
+		if (insertedStroke.BoardId == 1)
+		{
+			Whiteboard.Instance?.DisplayStroke(insertedStroke);
+		}
+	}
+	
+	private void OnStrokeUpdated(EventContext ctx, Stroke oldStroke, Stroke newStroke)
+	{
+		if (oldStroke.BoardId == 1)
+		{
+			Whiteboard.Instance?.RemoveStroke(oldStroke.Id);
+		}
+		if (newStroke.BoardId == 1)
+		{
+			Whiteboard.Instance?.DisplayStroke(newStroke);
+		}
+	}
+	
+	private void OnStrokeDeleted(EventContext ctx, Stroke deletedStroke)
+	{
+		if (deletedStroke.BoardId == 1)
+		{
+			Whiteboard.Instance?.RemoveStroke(deletedStroke.Id);
+		}
 	}
 	
 	public void AddStroke(ulong boardId, string color, float thickness, List<Point> points)

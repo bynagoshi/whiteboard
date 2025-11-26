@@ -5,14 +5,19 @@ using SpacetimeDB.Types;
 
 public partial class Whiteboard : Node2D
 {
+	public static Whiteboard Instance { get; private set; }
+	
 	[Export] public Node2D StrokesLayer;
 
 	private Line2D _currentLine;
 	private bool _isDrawing = false;
-	
+	//private bool _isDeleting = false;
+	private Dictionary<ulong, Line2D> _displayedStrokes = new Dictionary<ulong, Line2D>();	
+	private Dictionary<ulong, Dot> _displayedDots = new Dictionary<ulong, Dot>();
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
+		Instance = this;
 		if (StrokesLayer == null)
 		{
 			StrokesLayer = GetNode<Node2D>("StrokesLayer");
@@ -39,6 +44,26 @@ public partial class Whiteboard : Node2D
 				AddPointToStroke(motion.Position);
 			}
 		}
+
+		// if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Right)
+		// {
+		// 	if (mb.Pressed)
+		// 	{
+		// 		(mb.Position);
+		// 	}
+		// 	else
+		// 	{
+		// 		EndStroke();
+		// 	}
+			
+		// }
+		// else if (@event is InputEventMouseMotion motion)
+		// {
+		// 	if (!_isDeleting)
+		// 	{
+		// 		RemoveStroke();
+		// 	}
+		// }
 	}
 	
 	private void StartStroke(Vector2 screenPos)
@@ -96,6 +121,68 @@ public partial class Whiteboard : Node2D
 		SpacetimeManager.Instance.AddStroke(boardId, color, thickness, points);
 	}
 
+	private partial class Dot : Node2D
+	{
+		public float Radius;
+		public Color Color;
+
+		public override void _Draw()
+		{
+			DrawCircle(Vector2.Zero, Radius, Color);
+		}
+	}
+
+	public void DisplayStroke(Stroke stroke)
+	{
+		if (_displayedStrokes.ContainsKey(stroke.Id))
+		{
+			return;
+		}
+		
+		if (stroke.Points.Count == 1)
+		{
+			var dot = new Dot();
+			dot.Radius = stroke.Thickness / 2f;
+			dot.Color = Color.FromHtml(stroke.Color);
+			dot.Position = new Vector2(stroke.Points[0].X, stroke.Points[0].Y);
+			StrokesLayer.AddChild(dot);
+			_displayedDots[stroke.Id] = dot;
+			return;
+		}
+		
+		var line = new Line2D();
+		line.Width = stroke.Thickness;
+		line.Antialiased = true;
+		
+		if (Color.HtmlIsValid(stroke.Color))
+		{
+			line.DefaultColor = Color.FromHtml(stroke.Color);
+		}
+		
+		foreach (var point in stroke.Points)
+		{
+			line.AddPoint(new Vector2(point.X, point.Y));
+		}
+
+		
+		
+		StrokesLayer.AddChild(line);
+		_displayedStrokes[stroke.Id] = line;
+	}
+	
+	public void RemoveStroke(ulong strokeId)
+	{
+		if (_displayedStrokes.TryGetValue(strokeId, out Line2D line))
+		{
+			line.QueueFree();
+			_displayedStrokes.Remove(strokeId);
+		}
+		if (_displayedDots.TryGetValue(strokeId, out Dot dot))
+		{
+			dot.QueueFree();
+			_displayedDots.Remove(strokeId);
+		}
+	}
 
 	
 	// // Called every frame. 'delta' is the elapsed time since the previous frame.
