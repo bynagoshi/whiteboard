@@ -7,3 +7,9 @@ script = ExtResource("1_ig7tw")
 StrokesLayer = NodePath("StrokesLayer")
 
 [node name="StrokesLayer" type="Node2D" parent="."]
+
+[node name="Toolbar" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 317.0
+offset_bottom = 46.0

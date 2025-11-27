@@ -74,7 +74,7 @@ public partial class SpacetimeManager : Node
 	{
 		if (oldStroke.BoardId == 1)
 		{
-			Whiteboard.Instance?.RemoveStroke(oldStroke.Id);
+			Whiteboard.Instance?.RemoveStrokeFromDisplay(oldStroke.Id);
 		}
 		if (newStroke.BoardId == 1)
 		{
@@ -86,7 +86,7 @@ public partial class SpacetimeManager : Node
 	{
 		if (deletedStroke.BoardId == 1)
 		{
-			Whiteboard.Instance?.RemoveStroke(deletedStroke.Id);
+			Whiteboard.Instance?.RemoveStrokeFromDisplay(deletedStroke.Id);
 		}
 	}
 	
@@ -96,5 +96,10 @@ public partial class SpacetimeManager : Node
 		{
 			Client.Reducers.AddStroke(boardId, color, thickness, points);
 		}
+	}
+	
+	public void DeleteStroke(ulong strokeId)
+	{
+		Client?.Reducers?.DeleteStrokeAnyone(strokeId);
 	}
 }

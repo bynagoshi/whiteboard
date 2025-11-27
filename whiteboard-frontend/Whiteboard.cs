@@ -11,7 +11,7 @@ public partial class Whiteboard : Node2D
 
 	private Line2D _currentLine;
 	private bool _isDrawing = false;
-	//private bool _isDeleting = false;
+	private bool _isDeleting = false;
 	private Dictionary<ulong, Line2D> _displayedStrokes = new Dictionary<ulong, Line2D>();	
 	private Dictionary<ulong, Dot> _displayedDots = new Dictionary<ulong, Dot>();
 	// Called when the node enters the scene tree for the first time.
@@ -37,11 +37,27 @@ public partial class Whiteboard : Node2D
 				EndStroke();
 			}
 		}
+		else if (@event is InputEventMouseButton mb2 && mb2.ButtonIndex == MouseButton.Right)
+		{
+			if (mb2.Pressed)
+			{
+				_isDeleting = true;
+				DeleteStrokeAt(mb2.Position);
+			}
+			else
+			{
+				_isDeleting = false;
+			}
+		}
 		else if (@event is InputEventMouseMotion motion)
 		{
 			if (_isDrawing && _currentLine != null)
 			{
 				AddPointToStroke(motion.Position);
+			}
+			if (_isDeleting)
+			{
+				DeleteStrokeAt(motion.Position);
 			}
 		}
 
@@ -95,6 +111,7 @@ public partial class Whiteboard : Node2D
 		if (_currentLine != null && _currentLine.Points.Length > 0)
 		{
 			OnAddStroke();
+			_currentLine.QueueFree();
 		}
 		_isDrawing = false;
 		_currentLine = null;
@@ -134,7 +151,7 @@ public partial class Whiteboard : Node2D
 
 	public void DisplayStroke(Stroke stroke)
 	{
-		if (_displayedStrokes.ContainsKey(stroke.Id))
+		if (_displayedStrokes.ContainsKey(stroke.Id) || _displayedDots.ContainsKey(stroke.Id))
 		{
 			return;
 		}
@@ -170,17 +187,43 @@ public partial class Whiteboard : Node2D
 		_displayedStrokes[stroke.Id] = line;
 	}
 	
-	public void RemoveStroke(ulong strokeId)
+	public void RemoveStrokeFromDisplay(ulong strokeId)
 	{
 		if (_displayedStrokes.TryGetValue(strokeId, out Line2D line))
 		{
 			line.QueueFree();
 			_displayedStrokes.Remove(strokeId);
 		}
-		if (_displayedDots.TryGetValue(strokeId, out Dot dot))
+		else if (_displayedDots.TryGetValue(strokeId, out Dot dot))
 		{
 			dot.QueueFree();
 			_displayedDots.Remove(strokeId);
+		}
+	}
+
+	private void DeleteStrokeAt(Vector2 screenPos)
+	{
+		var localPos = StrokesLayer.ToLocal(screenPos);
+		foreach (var kvp in _displayedDots)
+		{
+			if (kvp.Value.Position.DistanceTo(localPos) <= kvp.Value.Radius)
+			{
+				SpacetimeManager.Instance?.DeleteStroke(kvp.Key);
+
+				return;
+			}
+		}
+		foreach (var kvp in _displayedStrokes)
+		{
+			var points = kvp.Value.Points;
+			for (int i = 0; i < points.Length; i++)
+			{
+				if (points[i].DistanceTo(localPos) <= kvp.Value.Width / 2f)
+				{
+					SpacetimeManager.Instance?.DeleteStroke(kvp.Key);
+					return;
+				}
+			}
 		}
 	}
 
