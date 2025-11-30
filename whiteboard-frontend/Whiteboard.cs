@@ -12,6 +12,7 @@ public partial class Whiteboard : Node2D
 	private Line2D _currentLine;
 	private bool _isDrawing = false;
 	private bool _isDeleting = false;
+	private bool _waitingForStrokeFromDb = false;
 	private Dictionary<ulong, Line2D> _displayedStrokes = new Dictionary<ulong, Line2D>();	
 	private Dictionary<ulong, Dot> _displayedDots = new Dictionary<ulong, Dot>();
 	// Called when the node enters the scene tree for the first time.
@@ -85,10 +86,11 @@ public partial class Whiteboard : Node2D
 	private void StartStroke(Vector2 screenPos)
 	{
 		_currentLine = new Line2D();
-		_currentLine.Width = 4f;
+		_currentLine.Width = LineWidthSelector.CurrentLineWidth;
 		_currentLine.Antialiased = true;
+		_currentLine.DefaultColor = ColorPicker.CurrentColor;
 		
-		StrokesLayer.AddChild(_currentLine);
+		StrokesLayer.CallDeferred("add_child", _currentLine);
 		
 		var localPos = StrokesLayer.ToLocal(screenPos);
 		_currentLine.AddPoint(localPos);
@@ -111,10 +113,9 @@ public partial class Whiteboard : Node2D
 		if (_currentLine != null && _currentLine.Points.Length > 0)
 		{
 			OnAddStroke();
-			_currentLine.QueueFree();
+			_waitingForStrokeFromDb = true;
 		}
 		_isDrawing = false;
-		_currentLine = null;
 	}
 
 	private void OnAddStroke()
@@ -131,7 +132,7 @@ public partial class Whiteboard : Node2D
 		}
 		
 		ulong boardId = 1;
-		Color lineColor = _currentLine.DefaultColor;
+		Color lineColor = ColorPicker.CurrentColor;
 		string color = "#" + lineColor.ToHtml(false); 
 		float thickness = _currentLine.Width;
 		
@@ -151,10 +152,17 @@ public partial class Whiteboard : Node2D
 
 	public void DisplayStroke(Stroke stroke)
 	{
+
 		if (_displayedStrokes.ContainsKey(stroke.Id) || _displayedDots.ContainsKey(stroke.Id))
 		{
 			return;
 		}
+
+		// if (_currentLine != null)
+		// {
+		// 	_currentLine.CallDeferred("queue_free");
+
+		// }
 		
 		if (stroke.Points.Count == 1)
 		{
@@ -166,7 +174,21 @@ public partial class Whiteboard : Node2D
 			_displayedDots[stroke.Id] = dot;
 			return;
 		}
+
+		if (_waitingForStrokeFromDb && _currentLine != null)
+		{
+
+			_currentLine.Width = stroke.Thickness;
+			if (Color.HtmlIsValid(stroke.Color))
+				_currentLine.DefaultColor = Color.FromHtml(stroke.Color);
+
+			_displayedStrokes[stroke.Id] = _currentLine;
+			_currentLine = null;
+			_waitingForStrokeFromDb = false;
+			return;
+		}
 		
+		// This might be useless? ^ should be enough since there should always be a current line
 		var line = new Line2D();
 		line.Width = stroke.Thickness;
 		line.Antialiased = true;
@@ -181,8 +203,6 @@ public partial class Whiteboard : Node2D
 			line.AddPoint(new Vector2(point.X, point.Y));
 		}
 
-		
-		
 		StrokesLayer.AddChild(line);
 		_displayedStrokes[stroke.Id] = line;
 	}
