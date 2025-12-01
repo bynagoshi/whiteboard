@@ -13,10 +13,12 @@ public struct UndoAction
 {
 	public UndoType Type;
 	public Stroke Stroke;
-	public UndoAction(Stroke stroke, UndoType type)
+	public bool NeedsUndo;
+	public UndoAction(Stroke stroke, UndoType type, bool needsUndo)
 	{
 		Stroke = stroke;
 		Type = type;
+		NeedsUndo = needsUndo;
 	}
 }
 
@@ -35,8 +37,9 @@ public partial class Whiteboard : Node2D
 	public Stack<UndoAction> undoStack = new Stack<UndoAction>();
 	public Stack<UndoAction> redoStack = new Stack<UndoAction>();
 	public bool _isPerformingUndoRedo = false;
-	private UndoAction? _pendingUndoRedoAction = null;
+	public UndoAction? _pendingUndoRedoAction = null;
 
+	
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
@@ -194,12 +197,28 @@ public partial class Whiteboard : Node2D
 			return;
 		}
 
-		// if (_currentLine != null)
-		// {
-		// 	_currentLine.CallDeferred("queue_free");
+		if (_isPerformingUndoRedo && _pendingUndoRedoAction.HasValue)
+		{
+			var pendingAction = _pendingUndoRedoAction.Value;
+			bool cameFromUndo = pendingAction.NeedsUndo;
 
-		// }
-		
+			UpdateStoredStrokeReferences(pendingAction.Stroke.Id, stroke);
+			
+			var updatedAction = new UndoAction(stroke, pendingAction.Type, !cameFromUndo);
+			
+			if (cameFromUndo)
+			{
+				redoStack.Push(updatedAction);
+			}
+			else 
+			{
+				undoStack.Push(updatedAction);
+			}
+			
+			_pendingUndoRedoAction = null;
+			_isPerformingUndoRedo = false; 
+		}
+
 		if (stroke.Points.Count == 1)
 		{
 			var dot = new Dot();
@@ -208,6 +227,14 @@ public partial class Whiteboard : Node2D
 			dot.Position = new Vector2(stroke.Points[0].X, stroke.Points[0].Y);
 			StrokesLayer.AddChild(dot);
 			_displayedDots[stroke.Id] = dot;
+
+			if (_waitingForStrokeFromDb)
+			{
+				_waitingForStrokeFromDb = false;
+				_currentLine = null;
+
+				RegisterUserAction(stroke, UndoType.Add);
+			}
 			return;
 		}
 
@@ -222,31 +249,10 @@ public partial class Whiteboard : Node2D
 			_currentLine = null;
 			_waitingForStrokeFromDb = false;
 
-			if (!_isPerformingUndoRedo)
-			{
-				undoStack.Push(new UndoAction(stroke, UndoType.Add));
-				redoStack.Clear();
-			}
+			RegisterUserAction(stroke, UndoType.Add);
 			return;
 		}
-		if (_isPerformingUndoRedo && _pendingUndoRedoAction.HasValue)
-		{
-			var pendingAction = _pendingUndoRedoAction.Value;
-			
-			var updatedAction = new UndoAction(stroke, pendingAction.Type);
-			
-			if (pendingAction.Type == UndoType.Add)
-			{
-				undoStack.Push(updatedAction);
-			}
-			else 
-			{
-				redoStack.Push(updatedAction);
-			}
-			
-			_pendingUndoRedoAction = null;
-			_isPerformingUndoRedo = false; 
-		}
+		
 		
 		// This might be useless? Above should be enough since there should always be a current line
 		var line = new Line2D();
@@ -289,7 +295,7 @@ public partial class Whiteboard : Node2D
 			if (kvp.Value.Position.DistanceTo(localPos) <= kvp.Value.Radius)
 			{
 				SpacetimeManager.Instance?.DeleteStroke(kvp.Key);
-
+				RemoveStrokeFromDisplay(kvp.Key);
 				return;
 			}
 		}
@@ -301,6 +307,7 @@ public partial class Whiteboard : Node2D
 				if (points[i].DistanceTo(localPos) <= kvp.Value.Width / 2f)
 				{
 					SpacetimeManager.Instance?.DeleteStroke(kvp.Key);
+					RemoveStrokeFromDisplay(kvp.Key);
 					return;
 				}
 			}
@@ -310,7 +317,8 @@ public partial class Whiteboard : Node2D
 	
 	private void Undo()
 	{
-		if (undoStack.Count == 0)
+		
+		if (undoStack.Count == 0 || _isPerformingUndoRedo || _waitingForStrokeFromDb)
 		{
 			return;
 		}
@@ -320,8 +328,9 @@ public partial class Whiteboard : Node2D
 		if (action.Type == UndoType.Add)
 		{
 			SpacetimeManager.Instance?.DeleteStroke(action.Stroke.Id);
-			redoStack.Push(action);
-			_isPerformingUndoRedo = false;
+			_pendingUndoRedoAction = action;
+
+			// redoStack.Push(new UndoAction(action.Stroke, UndoType.Delete, false));
 		}
 		else
 		{
@@ -332,7 +341,7 @@ public partial class Whiteboard : Node2D
 
 	private void Redo()
 	{
-		if (redoStack.Count == 0)
+		if (redoStack.Count == 0 || _isPerformingUndoRedo || _waitingForStrokeFromDb)
 		{
 			return;
 		}
@@ -347,13 +356,59 @@ public partial class Whiteboard : Node2D
 		else
 		{
 			SpacetimeManager.Instance?.DeleteStroke(action.Stroke.Id);
-			undoStack.Push(action);
-			_isPerformingUndoRedo = false;
+			// undoStack.Push(new UndoAction(action.Stroke, UndoType.Add, true));
+			_pendingUndoRedoAction = action;
+
 		}
 	}
-	
-	// // Called every frame. 'delta' is the elapsed time since the previous frame.
-	// public override void _Process(double delta)
-	// {
-	// }
+
+	public void RegisterUserAction(Stroke stroke, UndoType type)
+	{
+		if (_isPerformingUndoRedo)
+		{
+			return;
+		}
+
+		undoStack.Push(new UndoAction(stroke, type, true));
+		redoStack.Clear();
+	}
+
+	private void UpdateStoredStrokeReferences(ulong oldId, Stroke replacement)
+	{
+		if (oldId == replacement.Id)
+		{
+			return;
+		}
+
+		void UpdateStack(Stack<UndoAction> stack)
+		{
+			if (stack.Count == 0)
+			{
+				return;
+			}
+
+			var actions = stack.ToArray();
+			stack.Clear();
+
+			for (int i = actions.Length - 1; i >= 0; i--)
+			{
+				var action = actions[i];
+				if (action.Stroke.Id == oldId)
+				{
+					action = new UndoAction(replacement, action.Type, action.NeedsUndo);
+				}
+				stack.Push(action);
+			}
+		}
+
+		UpdateStack(undoStack);
+		UpdateStack(redoStack);
+
+		if (_pendingUndoRedoAction.HasValue && _pendingUndoRedoAction.Value.Stroke.Id == oldId)
+		{
+			var pending = _pendingUndoRedoAction.Value;
+			_pendingUndoRedoAction = new UndoAction(replacement, pending.Type, pending.NeedsUndo);
+		}
+	}
+
 }

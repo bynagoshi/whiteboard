@@ -87,10 +87,31 @@ public partial class SpacetimeManager : Node
 		if (deletedStroke.BoardId == 1)
 		{
 			Whiteboard.Instance?.RemoveStrokeFromDisplay(deletedStroke.Id);
-			if (Whiteboard.Instance != null && !Whiteboard.Instance._isPerformingUndoRedo)
+			if (Whiteboard.Instance != null )
 			{
-				Whiteboard.Instance.undoStack.Push(new UndoAction(deletedStroke, UndoType.Delete));
-				Whiteboard.Instance.redoStack.Clear();
+				if (!Whiteboard.Instance._isPerformingUndoRedo)
+				{
+					Whiteboard.Instance.RegisterUserAction(deletedStroke, UndoType.Delete);
+				}
+				else
+				{
+					var pendingAction = Whiteboard.Instance._pendingUndoRedoAction.Value;
+					bool cameFromUndo = pendingAction.NeedsUndo;
+					var updatedAction = new UndoAction(deletedStroke, pendingAction.Type, !cameFromUndo);
+					
+					if (cameFromUndo)
+					{
+						Whiteboard.Instance.redoStack.Push(updatedAction);
+					}
+					else
+					{
+						Whiteboard.Instance.undoStack.Push(updatedAction);
+					}
+					
+					Whiteboard.Instance._pendingUndoRedoAction = null;
+					Whiteboard.Instance._isPerformingUndoRedo = false;
+				}
+				
 			}
 		}
 	}
