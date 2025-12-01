@@ -87,6 +87,11 @@ public partial class SpacetimeManager : Node
 		if (deletedStroke.BoardId == 1)
 		{
 			Whiteboard.Instance?.RemoveStrokeFromDisplay(deletedStroke.Id);
+			if (Whiteboard.Instance != null && !Whiteboard.Instance._isPerformingUndoRedo)
+			{
+				Whiteboard.Instance.undoStack.Push(new UndoAction(deletedStroke, UndoType.Delete));
+				Whiteboard.Instance.redoStack.Clear();
+			}
 		}
 	}
 	
